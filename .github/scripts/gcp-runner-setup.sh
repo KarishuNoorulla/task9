@@ -2,11 +2,6 @@
 
 # Install dependencies
 sudo apt-get update && sudo apt-get install -y \
-    apt-transport-https \
-    ca-certificates \
-    curl \
-    gnupg \
-    lsb-release \
     docker.io \
     jq \
     unzip \
@@ -17,15 +12,14 @@ echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.clou
 curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
 sudo apt-get update && sudo apt-get install -y google-cloud-sdk kubectl
 
-# Install GitHub Runner
+# Install GitHub Actions Runner
 mkdir -p actions-runner && cd actions-runner
-RUNNER_VERSION="2.328.0"
-curl -o actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz -L https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
-tar xzf actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
+curl -o actions-runner-linux-x64-2.328.0.tar.gz -L https://github.com/actions/runner/releases/download/v2.328.0/actions-runner-linux-x64-2.328.0.tar.gz
+tar xzf actions-runner-linux-x64-2.328.0.tar.gz
 
 # Configure runner
-./config.sh --url https://github.com/KarishuNoorulla/task9 --token ${RUNNER_TOKEN} --name gcp-runner --unattended --work _work
+./config.sh --url https://github.com/KarishuNoorulla/task9 --token ${RUNNER_TOKEN} --name gcp-runner --unattended
 
-# Install and start service
+# Install service
 sudo ./svc.sh install
 sudo ./svc.sh start

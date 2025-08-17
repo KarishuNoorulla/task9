@@ -7,51 +7,45 @@ on:
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  REGION: us-central1
+  REGION: ${{ secrets.GCP_REGION }}
   CLUSTER_NAME: task9-gke-cluster
-  RUNNER_VM_NAME: github-runner-vm
 
 jobs:
   create-runner:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout
+    - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup GCP
-      uses: google-github-actions/setup-gcloud@v1
+    - name: Authenticate to GCP
+      uses: google-github-actions/auth@v1
       with:
-        project_id: ${{ env.PROJECT_ID }}
-        service_account_key: ${{ secrets.GCP_SA_KEY }}
-        export_default_credentials: true
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
 
     - name: Create Runner VM
       run: |
-        gcloud compute instances create ${{ env.RUNNER_VM_NAME }} \
-          --project=${{ env.PROJECT_ID }} \
+        gcloud compute instances create github-runner-vm \
           --zone=${{ env.REGION }}-a \
           --machine-type=e2-medium \
           --image-family=ubuntu-2204-lts \
           --image-project=ubuntu-os-cloud \
           --boot-disk-size=20GB \
-          --tags=github-runner \
           --scopes=cloud-platform \
           --metadata-from-file=startup-script=.github/scripts/gcp-runner-setup.sh
 
-    - name: Wait for VM initialization
-      run: sleep 120
+    - name: Wait for VM setup
+      run: sleep 180
 
-  terraform-apply:
+  deploy-infrastructure:
     needs: create-runner
     runs-on: self-hosted
     steps:
-    - name: Checkout
+    - name: Checkout code
       uses: actions/checkout@v4
 
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v2
-      with:
-        terraform_version: 1.5.7
 
     - name: Terraform Init
       run: terraform init
@@ -61,15 +55,14 @@ jobs:
       run: terraform apply -auto-approve -var="project_id=${{ env.PROJECT_ID }}"
       working-directory: ./terraform
 
-  deploy-app:
-    needs: terraform-apply
+  deploy-application:
+    needs: deploy-infrastructure
     runs-on: self-hosted
     steps:
-    - name: Setup GCP
-      uses: google-github-actions/setup-gcloud@v1
+    - name: Authenticate to GCP
+      uses: google-github-actions/auth@v1
       with:
-        project_id: ${{ env.PROJECT_ID }}
-        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
 
     - name: Build and Push Container
       run: |
@@ -81,6 +74,4 @@ jobs:
         gcloud container clusters get-credentials ${{ env.CLUSTER_NAME }} \
           --region ${{ env.REGION }} \
           --project ${{ env.PROJECT_ID }}
-        
-        sed -i "s|IMAGE_PLACEHOLDER|gcr.io/${{ env.PROJECT_ID }}/task9-app:${{ github.sha }}|g" ./app/manifests/deployment.yaml
         kubectl apply -f ./app/manifests/
