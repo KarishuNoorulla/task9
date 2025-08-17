@@ -9,7 +9,7 @@ env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   REGION: us-central1
   CLUSTER_NAME: task9-gke-cluster
-  RUNNER_VM_NAME: github-runner-vm
+  RUNNER_VM_NAME: github-runner
 
 jobs:
   create-runner:
