@@ -9,7 +9,7 @@ env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   REGION: us-central1
   CLUSTER_NAME: task9-gke-cluster
-  RUNNER_VM_NAME: github-runner
+  RUNNER_VM_NAME: github-runner-1-Noorullas
 
 jobs:
   create-runner:
@@ -41,26 +41,24 @@ jobs:
       run: sleep 120
 
   deploy-infrastructure:
-    needs: create-runner
-    runs-on: self-hosted
-    timeout-minutes: 30
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v2
-      with:
-        terraform_wrapper: false
-        terraform_version: 1.5.7
-
+  needs: create-runner
+  runs-on: self-hosted
+  timeout-minutes: 20  # Reduced from 30
+  steps:
     - name: Terraform Init
       run: terraform init -upgrade -input=false
       working-directory: ./terraform
+      timeout-minutes: 3
 
     - name: Terraform Apply
-      run: terraform apply -auto-approve -input=false -var="project_id=${{ env.PROJECT_ID }}"
+      run: |
+        terraform apply \
+          -auto-approve \
+          -input=false \
+          -var="project_id=${{ env.PROJECT_ID }}" \
+          -parallelism=4
       working-directory: ./terraform
+      timeout-minutes: 15
 
   deploy-application:
     needs: deploy-infrastructure
