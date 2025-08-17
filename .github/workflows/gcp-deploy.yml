@@ -9,7 +9,7 @@ env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   REGION: us-central1
   CLUSTER_NAME: task9-gke-cluster
-  RUNNER_VM_NAME: github-runner-1-Noorullas
+  RUNNER_VM_NAME: github-runner-vm
 
 jobs:
   create-runner:
@@ -25,6 +25,9 @@ jobs:
         credentials_json: ${{ secrets.GCP_SA_KEY }}
         project_id: ${{ env.PROJECT_ID }}
 
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+
     - name: Create Runner VM
       run: |
         gcloud compute instances create ${{ env.RUNNER_VM_NAME }} \
@@ -34,31 +37,31 @@ jobs:
           --image-project=ubuntu-os-cloud \
           --boot-disk-size=20GB \
           --scopes=cloud-platform \
-          --metadata-from-file=startup-script=.github/scripts/gcp-runner-setup.sh \
-          --no-address
+          --metadata-from-file=startup-script=.github/scripts/gcp-runner-setup.sh
 
-    - name: Wait for VM setup
+    - name: Wait for VM initialization
       run: sleep 120
 
   deploy-infrastructure:
-  needs: create-runner
-  runs-on: self-hosted
-  timeout-minutes: 20  # Reduced from 30
-  steps:
+    needs: create-runner
+    runs-on: self-hosted
+    timeout-minutes: 20
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_wrapper: false
+
     - name: Terraform Init
       run: terraform init -upgrade -input=false
       working-directory: ./terraform
-      timeout-minutes: 3
 
     - name: Terraform Apply
-      run: |
-        terraform apply \
-          -auto-approve \
-          -input=false \
-          -var="project_id=${{ env.PROJECT_ID }}" \
-          -parallelism=4
+      run: terraform apply -auto-approve -input=false -var="project_id=${{ env.PROJECT_ID }}"
       working-directory: ./terraform
-      timeout-minutes: 15
 
   deploy-application:
     needs: deploy-infrastructure
@@ -81,4 +84,3 @@ jobs:
           --region ${{ env.REGION }} \
           --project ${{ env.PROJECT_ID }}
         kubectl apply -f ./app/manifests/
-        kubectl rollout status deployment/web-app --timeout=5m
