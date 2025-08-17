@@ -9,13 +9,8 @@ variable "region" {
   default     = "us-central1"
 }
 
-variable "gke_username" {
-  default     = ""
-  description = "GKE username"
-}
-
-variable "gke_password" {
-  default     = ""
-  description = "GKE password"
-  sensitive   = true
+variable "cluster_name" {
+  description = "GKE Cluster Name"
+  type        = string
+  default     = "task9-cluster"
 }
