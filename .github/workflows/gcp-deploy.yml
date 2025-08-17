@@ -1,0 +1,88 @@
+name: GCP Terraform Deployment
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: ${{ secrets.GCP_REGION }}
+
+jobs:
+  setup-runner:
+    runs-on: ubuntu-latest
+    outputs:
+      vm_ip: ${{ steps.create-vm.outputs.vm_ip }}
+    steps:
+    - name: Create GCP VM
+      id: create-vm
+      uses: google-github-actions/create-gce-instance@v1
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+        zone: ${{ env.REGION }}-a
+        machine_type: e2-medium
+        disk_size: 20
+        scopes: "https://www.googleapis.com/auth/cloud-platform"
+        metadata: |
+          startup-script-url: https://raw.githubusercontent.com/${{ github.repository }}/main/.github/scripts/gcp-runner-setup.sh
+        labels: github-runner=true
+
+  terraform-deploy:
+    needs: setup-runner
+    runs-on: [self-hosted, linux]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+
+    - name: Setup GCP
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Terraform Init
+      run: terraform init
+      working-directory: ./terraform
+
+    - name: Terraform Apply
+      run: terraform apply -auto-approve -var="project_id=$PROJECT_ID"
+      working-directory: ./terraform
+      env:
+        TF_VAR_gke_username: ${{ secrets.GKE_USERNAME }}
+        TF_VAR_gke_password: ${{ secrets.GKE_PASSWORD }}
+
+  build-deploy-app:
+    needs: terraform-deploy
+    runs-on: [self-hosted, linux]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup GCP
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+
+    - name: Docker Build & Push
+      run: |
+        docker build -t gcr.io/$PROJECT_ID/web-app:$GITHUB_SHA ./app
+        docker push gcr.io/$PROJECT_ID/web-app:$GITHUB_SHA
+
+    - name: Configure Kubectl
+      run: |
+        gcloud container clusters get-credentials gh-runner-cluster \
+          --region $REGION \
+          --project $PROJECT_ID
+
+    - name: Deploy to GKE
+      run: |
+        sed -i "s|COMMIT_SHA|$GITHUB_SHA|g" ./app/manifests/deployment.yaml
+        sed -i "s|PROJECT_ID|$PROJECT_ID|g" ./app/manifests/deployment.yaml
+        kubectl apply -f ./app/manifests/
+        kubectl rollout status deployment/web-app
